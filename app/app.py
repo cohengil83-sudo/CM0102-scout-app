@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="CM 01/02 Ultimate Scout", layout="wide")
-st.title("⚽ CM 01/02 Advanced Excel-Style Scout (v6.0)")
-st.write("גרסה 6.0: תיקון באג הגילאים והלאומים! הוספת מסנני טווח מדויקים כמו באקסל לרמה הנוכחית והעתידית.")
+st.title("⚽ CM 01/02 Advanced Excel-Style Scout (v6.1)")
+st.write("גרסה 6.1: סינון מחירים הוסף + ניקוי אוטומטי של שחקני רפאים (כאן ועכשיו בלבד!).")
 
 def parse_cm0102_v6(uploaded_file):
     players = []
@@ -13,7 +13,7 @@ def parse_cm0102_v6(uploaded_file):
     PLAYER_STRUCT_SIZE = 72
     st.sidebar.info(f"📁 קובץ נטען בהצלחה: {round(total_bytes / (1024*1024), 1)} MB")
     
-    # מפת מדינות רשמית ומיושרת לחלוטין למניעת בלבול
+    # מפת מדינות רשמית
     nations_map = {
         0: "England", 1: "Scotland", 2: "Wales", 3: "Northern Ireland", 4: "Ireland",
         5: "France", 6: "Germany", 7: "Italy", 8: "Spain", 9: "Portugal",
@@ -37,25 +37,22 @@ def parse_cm0102_v6(uploaded_file):
     }
 
     try:
-        # סריקה עם קפיצות של 72 בתים (גודל מבנה שחקן מדויק) למניעת כפילויות וסטיית אופסט
         for i in range(0, total_bytes - PLAYER_STRUCT_SIZE, 72):
             chunk = file_bytes[i:i+PLAYER_STRUCT_SIZE]
             
             age = chunk[14]
-            ca = chunk[16] # רמה נוכחית
-            pa = chunk[17] # פוטנציאל עתידי
+            ca = chunk[16] 
+            pa = chunk[17] 
             pos_code = chunk[20]
             nat_code = chunk[22]
             club_code = chunk[26]
             
-            # פילטר גיל קשוח והגיוני - מונע כניסה של זבל בינארי ואנשי צוות בני 45+
             if 15 <= age <= 36 and 1 <= ca <= 200 and 1 <= pa <= 200:
                 if pos_code in [1, 2, 3, 4, 5, 6]:
                     
                     val = (chunk[24] + (chunk[25] << 8) + (chunk[26] << 16)) * 10
                     if val > 50000000 or val < 0: val = 0
                     
-                    # פענוח עמדה
                     side_byte = chunk[21]
                     side_text = "C"
                     if side_byte == 1: side_text = "L"
@@ -69,11 +66,10 @@ def parse_cm0102_v6(uploaded_file):
                     elif pos_code == 5: exact_pos = f"AM {side_text}"
                     else: exact_pos = "S C"
 
-                    nation_text = nations_map.get(nat_code, f"Other")
-                    club_text = clubs_map.get(club_code, f"מועדון מקומי")
-                    if club_code == 0: club_text = "Free Agent"
+                    nation_text = nations_map.get(nat_code, "Other")
+                    club_text = clubs_map.get(club_code, "מועדון מקומי")
+                    if club_code == 0: club_text = "Free Agent (שחקן חופשי)"
 
-                    # זיהוי שחקנים אגדיים קבועים בצורה מדויקת ומיושרת
                     player_type = "שחקן ריג'ן / פנימי"
                     if age == 22 and nat_code == 41 and pos_code == 5:
                         player_type = "Sergey Nikiforenko (האגדי! 🇧🇾)"
@@ -85,7 +81,7 @@ def parse_cm0102_v6(uploaded_file):
                     elif age == 26 and nat_code == 30 and club_code == 0:
                         player_type = "Taribo West (🇳🇬)"
                         nation_text = "Nigeria"
-                        club_text = "Free Agent"
+                        club_text = "Free Agent (שחקן חופשי)"
                     elif age == 15 and nat_code == 15:
                         player_type = "Radamel García (Falcao)"
                         nation_text = "Colombia"
@@ -102,7 +98,7 @@ def parse_cm0102_v6(uploaded_file):
                         "מועדון בשמירה": club_text,
                         "רמה נוכחית (כאן ועכשיו)": ca,
                         "תקרה לעתיד (פוטנציאל)": pa,
-                        "שווי מוערך (£)": val if val > 0 else 25000
+                        "שווי מוערך (£)": val if val > 0 else 0
                     })
                     
         df = pd.DataFrame(players)
@@ -115,6 +111,13 @@ def parse_cm0102_v6(uploaded_file):
 
 # --- ממשק משתמש בסגנון אקסל ---
 st.sidebar.header("📊 מסננים בסגנון אקסל")
+
+# מסנן מחירים (חדש)
+st.sidebar.subheader("שווי שחקן (£)")
+min_val, max_val = st.sidebar.slider(
+    "בחר טווח מחירים (0 = בחינם):",
+    min_value=0, max_value=20000000, value=(0, 10000000), step=100000
+)
 
 # מסנן טווח רמה נוכחית (CA)
 st.sidebar.subheader("כאן ועכשיו (רמה נוכחית)")
@@ -144,19 +147,24 @@ if file_uploader is not None:
         df_players = parse_cm0102_v6(file_uploader)
         
     if not df_players.empty:
-        # הפעלת הסינונים הדינמיים של האקסל
+        # הפעלת הסינונים הדינמיים + חסימת "שחקני רפאים"
         filtered_df = df_players[
             (df_players["רמה נוכחית (כאן ועכשיו)"] >= min_ca) & (df_players["רמה נוכחית (כאן ועכשיו)"] <= max_ca) &
             (df_players["תקרה לעתיד (פוטנציאל)"] >= min_pa) & (df_players["תקרה לעתיד (פוטנציאל)"] <= max_pa) &
-            (df_players["גיל"] >= min_age) & (df_players["גיל"] <= max_age)
+            (df_players["גיל"] >= min_age) & (df_players["גיל"] <= max_age) &
+            (df_players["שווי מוערך (£)"] >= min_val) & (df_players["שווי מוערך (£)"] <= max_val) &
+            (df_players["מועדון בשמירה"] != "מועדון מקומי") & 
+            (df_players["לאום / מדינה"] != "Other")
         ]
 
         if not filtered_df.empty:
-            st.success(f"💥 סינון אקסל הצליח! מצאנו {len(filtered_df)} שחקנים מדויקים בטווח שהגדרת.")
+            st.success(f"💥 סינון אקסל הצליח! מצאנו {len(filtered_df)} שחקנים אמיתיים בטווח שהגדרת.")
             filtered_df = filtered_df.sort_values(by="תקרה לעתיד (פוטנציאל)", ascending=False)
             
             display_cols = ["סוג שחקן / שם אגדי", "גיל", "עמדה מדויקת", "לאום / מדינה", "מועדון בשמירה", "רמה נוכחית (כאן ועכשיו)", "תקרה לעתיד (פוטנציאל)", "שווי מוערך (£)"]
-            st.dataframe(filtered_df[display_cols].reset_index(drop=True), use_container_width=True)
+            
+            # עיצוב עמודת השווי עם פסיקים לקריאות נוחה
+            st.dataframe(filtered_df[display_cols].reset_index(drop=True).style.format({"שווי מוערך (£)": "{:,.0f}"}), use_container_width=True)
         else:
             st.warning("⚠️ לא נמצאו שחקנים בטווח המדויק שבחרת. נסה להרחיב מעט את טווחי ה-Sliders בצד ימין.")
 else:
