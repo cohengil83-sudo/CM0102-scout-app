@@ -2,18 +2,17 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="CM 01/02 Ultimate Scout", layout="wide")
-st.title("⚽ CM 01/02 Advanced Excel-Style Scout (v7.0)")
-st.write("גרסה 7.0: מערכת סינון אגרסיבית לניקוי קריאות שגויות מקובץ השמירה והתאמה מדויקת למנוע החיפוש של המשחק.")
+st.title("⚽ CM 01/02 Advanced Excel-Style Scout (v8.0)")
+st.write("גרסה 8.0: הופעלה 'חומת אש' אגרסיבית לחיסול זבל בינארי ושחקנים מומצאים.")
 
 def get_cm_age_bracket(age):
-    """מתרגם גיל מדויק לטווח הגילאים שקיים במנוע החיפוש של המשחק"""
     if age <= 20: return "15-20"
     elif age <= 25: return "21-25"
     elif age <= 30: return "26-30"
     elif age <= 35: return "31-35"
     else: return "36-40"
 
-def parse_cm0102_v7(uploaded_file):
+def parse_cm0102_v8(uploaded_file):
     players = []
     file_bytes = uploaded_file.read()
     total_bytes = len(file_bytes)
@@ -51,68 +50,71 @@ def parse_cm0102_v7(uploaded_file):
             ca = chunk[16] 
             pa = chunk[17] 
             pos_code = chunk[20]
+            side_byte = chunk[21]
             nat_code = chunk[22]
             club_code = chunk[26]
+            val = (chunk[24] + (chunk[25] << 8) + (chunk[26] << 16)) * 10
             
-            # בדיקת הגיון ראשונית - רמות וגילאים חוקיים
-            if 15 <= age <= 40 and 1 <= ca <= 200 and 1 <= pa <= 200:
-                if pos_code in [1, 2, 3, 4, 5, 6]:
-                    
-                    val = (chunk[24] + (chunk[25] << 8) + (chunk[26] << 16)) * 10
-                    
-                    # 🔴 מסנן הגיון אגרסיבי (Sanity Check): 
-                    # אם השחקן חופשי אבל יש לו שווי כספי, מדובר בשגיאת קריאה של זבל בינארי. נדלג עליו!
-                    if club_code == 0 and val > 0:
-                        continue 
-                        
-                    if val > 50000000 or val < 0: val = 0
-                    
-                    side_byte = chunk[21]
-                    side_text = "C"
-                    if side_byte == 1: side_text = "L"
-                    elif side_byte == 2: side_text = "R"
-                    elif side_byte == 4: side_text = "L/C"
-                    
-                    if pos_code == 1: exact_pos = "GK"
-                    elif pos_code == 2: exact_pos = f"D {side_text}"
-                    elif pos_code == 3: exact_pos = f"M {side_text}"
-                    elif pos_code == 4: exact_pos = f"F {side_text}"
-                    elif pos_code == 5: exact_pos = f"AM {side_text}"
-                    else: exact_pos = "S C"
+            # --- חומת האש הלוגית ---
+            
+            # 1. סינון בסיסי של גיל ורמות
+            if not (15 <= age <= 40 and 1 <= ca <= 200 and 1 <= pa <= 200): continue
+            
+            # 2. חוק הפוטנציאל: הפוטנציאל לא יכול להיות נמוך מהרמה הנוכחית (מחסל זבל בינארי)
+            if pa < ca: continue
+                
+            # 3. חוק הצדדיות: לשחקן חוקי יש צד מוגדר (0=אמצע, 1=שמאל, 2=ימין, 4=שמאל/אמצע)
+            if side_byte not in [0, 1, 2, 4]: continue
+                
+            # 4. חוק החוזים: שחקן חופשי חייב להיות שווה 0
+            if club_code == 0 and val > 0: continue
+                
+            # 5. חוק הערך המקסימלי
+            if val > 50000000 or val < 0: continue
 
-                    nation_text = nations_map.get(nat_code, "Other")
-                    club_text = clubs_map.get(club_code, "מועדון מקומי")
-                    if club_code == 0: club_text = "Free Agent"
+            # --- סיום חומת האש ---
 
-                    player_type = ""
-                    if age == 22 and nat_code == 41 and pos_code == 5:
-                        player_type = "Sergey Nikiforenko 🇧🇾"
-                    elif age == 18 and nat_code == 41:
-                        player_type = "Maxim Tsigalko 🇧🇾"
-                    elif age == 26 and nat_code == 30 and club_code == 0:
-                        player_type = "Taribo West 🇳🇬"
+            if pos_code in [1, 2, 3, 4, 5, 6]:
+                side_text = "C"
+                if side_byte == 1: side_text = "L"
+                elif side_byte == 2: side_text = "R"
+                elif side_byte == 4: side_text = "L/C"
+                
+                if pos_code == 1: exact_pos = "GK"
+                elif pos_code == 2: exact_pos = f"D {side_text}"
+                elif pos_code == 3: exact_pos = f"M {side_text}"
+                elif pos_code == 4: exact_pos = f"F {side_text}"
+                elif pos_code == 5: exact_pos = f"AM {side_text}"
+                else: exact_pos = "S C"
 
-                    # המרת הגיל לטווח האמיתי שיש במשחק
-                    age_bracket = get_cm_age_bracket(age)
-                    
-                    # יצירת הוראות חיפוש חכמות והגיוניות
-                    if club_text == "Free Agent":
-                        search_guide = f"חיפוש שחקנים ➔ לאום: {nation_text} | עמדה: {exact_pos} | גיל: {age_bracket} | סנן חוזה: Expired"
-                    else:
-                        formatted_val = f"£{val:,.0f}"
-                        search_guide = f"גש למועדון {club_text} ➔ חפש בעמדה {exact_pos} | מ-{nation_text} | 🎯 שווי מדויק: {formatted_val}"
+                nation_text = nations_map.get(nat_code, "Other")
+                club_text = clubs_map.get(club_code, "מועדון מקומי")
+                if club_code == 0: club_text = "Free Agent"
 
-                    players.append({
-                        "שם מזוהה (אם יש)": player_type,
-                        "גיל מדויק בקובץ": age,
-                        "עמדה": exact_pos,
-                        "לאום": nation_text,
-                        "מועדון": club_text,
-                        "רמה נוכחית": ca,
-                        "פוטנציאל": pa,
-                        "שווי (£)": val, 
-                        "איך למצוא במשחק? 🔍": search_guide
-                    })
+                player_type = ""
+                if age == 22 and nat_code == 41 and pos_code == 5: player_type = "Sergey Nikiforenko 🇧🇾"
+                elif age == 18 and nat_code == 41: player_type = "Maxim Tsigalko 🇧🇾"
+                elif age == 26 and nat_code == 30 and club_code == 0: player_type = "Taribo West 🇳🇬"
+
+                age_bracket = get_cm_age_bracket(age)
+                
+                if club_text == "Free Agent":
+                    search_guide = f"חיפוש שחקנים ➔ לאום: {nation_text} | עמדה: {exact_pos} | גיל: {age_bracket} | סנן חוזה: Expired"
+                else:
+                    formatted_val = f"£{val:,.0f}"
+                    search_guide = f"גש למועדון {club_text} ➔ חפש בעמדה {exact_pos} | מ-{nation_text} | 🎯 שווי מדויק: {formatted_val}"
+
+                players.append({
+                    "שם מזוהה (אם יש)": player_type,
+                    "גיל מדויק בקובץ": age,
+                    "עמדה": exact_pos,
+                    "לאום": nation_text,
+                    "מועדון": club_text,
+                    "רמה נוכחית": ca,
+                    "פוטנציאל": pa,
+                    "שווי (£)": val, 
+                    "איך למצוא במשחק? 🔍": search_guide
+                })
                     
         df = pd.DataFrame(players)
         if not df.empty:
@@ -140,11 +142,10 @@ min_age, max_age = st.sidebar.slider("טווח גילאים:", min_value=15, max
 file_uploader = st.file_uploader("גרור לכאן את קובץ ה-SAV שלך מהמשחק", type=["sav"])
 
 if file_uploader is not None:
-    with st.spinner("⏳ מנתח את הנתונים, מסנן זבל בינארי ומכין הוראות חיפוש..."):
-        df_players = parse_cm0102_v7(file_uploader)
+    with st.spinner("⏳ סורק את הקובץ ומפעיל חומת אש לניקוי זבל בינארי..."):
+        df_players = parse_cm0102_v8(file_uploader)
         
     if not df_players.empty:
-        # סינון סופי להצגה
         filtered_df = df_players[
             (df_players["רמה נוכחית"] >= min_ca) & (df_players["רמה נוכחית"] <= max_ca) &
             (df_players["פוטנציאל"] >= min_pa) & (df_players["פוטנציאל"] <= max_pa) &
@@ -155,7 +156,7 @@ if file_uploader is not None:
         ]
 
         if not filtered_df.empty:
-            st.success(f"💥 סינון נקי הצליח! מצאנו {len(filtered_df)} שחקנים אמיתיים לחלוטין.")
+            st.success(f"💥 סינון נקי הצליח! מצאנו {len(filtered_df)} שחקנים אמיתיים. הזבל הבינארי נמחק.")
             filtered_df = filtered_df.sort_values(by="פוטנציאל", ascending=False)
             
             st.dataframe(
@@ -164,6 +165,6 @@ if file_uploader is not None:
                 hide_index=True 
             )
         else:
-            st.warning("⚠️ לא נמצאו שחקנים בטווח שבחרת, או שכל הנתונים היו שגויים ונוקו על ידי המערכת.")
+            st.warning("⚠️ לא נמצאו שחקנים בטווח שבחרת, או שכל הנתונים היו שגויים ונוקו על ידי חומת האש.")
 else:
-    st.info("💡 המערכת שודרגה! מנגנון סינון הזבל הופעל. העלה קובץ שמירה כדי להתחיל.")
+    st.info("💡 המערכת שודרגה לגרסה 8.0! חומת אש הופעלה. העלה קובץ שמירה כדי לאתר שחקנים אמיתיים בלבד.")
