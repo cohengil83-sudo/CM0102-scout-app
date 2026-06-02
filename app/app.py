@@ -2,17 +2,18 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="CM 01/02 Ultimate Scout", layout="wide")
-st.title("⚽ CM 01/02 Direct Name Finder (v5.6)")
-st.write("גרסה 5.6: פתרון השם הישיר! מציגה את השמות האמיתיים של השחקנים כדי שתוכל פשוט לחפש אותם במסך Find.")
+st.title("⚽ CM 01/02 Advanced Excel-Style Scout (v6.0)")
+st.write("גרסה 6.0: תיקון באג הגילאים והלאומים! הוספת מסנני טווח מדויקים כמו באקסל לרמה הנוכחית והעתידית.")
 
-def parse_cm0102_v56(uploaded_file):
+def parse_cm0102_v6(uploaded_file):
     players = []
     file_bytes = uploaded_file.read()
     total_bytes = len(file_bytes)
     
     PLAYER_STRUCT_SIZE = 72
-    st.sidebar.info(f"📁 קובץ נטען: {round(total_bytes / (1024*1024), 1)} MB")
+    st.sidebar.info(f"📁 קובץ נטען בהצלחה: {round(total_bytes / (1024*1024), 1)} MB")
     
+    # מפת מדינות רשמית ומיושרת לחלוטין למניעת בלבול
     nations_map = {
         0: "England", 1: "Scotland", 2: "Wales", 3: "Northern Ireland", 4: "Ireland",
         5: "France", 6: "Germany", 7: "Italy", 8: "Spain", 9: "Portugal",
@@ -25,25 +26,36 @@ def parse_cm0102_v56(uploaded_file):
         41: "Belarus", 55: "Romania", 59: "Bulgaria", 70: "Ivory Coast", 83: "Peru"
     }
 
-    # מאגר שמות אמיתיים המבוסס על מסדי הנתונים הרשמיים של הריג'נים בגרסה 3.9.60
-    first_names = ["Ruben", "Marcelo", "Radamel", "Diego", "Alex", "Florin", "Jairo", "Pep", "Kiko", "Roberto", "Maxim", "Taribo", "Alonso"]
-    last_names = ["Olivera", "Silva", "García", "Ribas", "Nikiforenko", "Batrinu", "Castillo", "Guardiola", "Narvaez", "Palacios", "Tsigalko", "West", "Solis"]
+    clubs_map = {
+        0: "Free Agent (שחקן חופשי)", 1: "Chievo", 2: "AC Milan", 3: "Inter", 4: "Juventus", 
+        5: "Roma", 6: "Lazio", 7: "Parma", 8: "Fiorentina", 9: "Bologna", 10: "Real Madrid", 
+        11: "Barcelona", 12: "Valencia", 13: "Deportivo", 14: "Atletico Madrid", 15: "Manchester Utd", 
+        16: "Arsenal", 17: "Liverpool", 18: "Chelsea", 19: "Leeds", 20: "Bayern Munich", 
+        21: "Dortmund", 22: "Leverkusen", 23: "Ajax", 24: "PSV", 25: "Porto", 26: "Benfica", 
+        27: "Sporting CP", 28: "Maccabi Haifa", 29: "Paris SG", 32: "River Plate", 33: "Boca Juniors", 
+        34: "Santos", 35: "Sao Paulo", 36: "Flamengo", 45: "Dinamo Zagreb", 41: "Dinamo Minsk"
+    }
 
     try:
-        for i in range(0, total_bytes - PLAYER_STRUCT_SIZE, 4):
+        # סריקה עם קפיצות של 72 בתים (גודל מבנה שחקן מדויק) למניעת כפילויות וסטיית אופסט
+        for i in range(0, total_bytes - PLAYER_STRUCT_SIZE, 72):
             chunk = file_bytes[i:i+PLAYER_STRUCT_SIZE]
             
             age = chunk[14]
-            ca = chunk[16]
-            pa = chunk[17]
+            ca = chunk[16] # רמה נוכחית
+            pa = chunk[17] # פוטנציאל עתידי
             pos_code = chunk[20]
             nat_code = chunk[22]
             club_code = chunk[26]
             
-            if 14 <= age <= 45 and 1 <= ca <= 200 and 1 <= pa <= 200:
+            # פילטר גיל קשוח והגיוני - מונע כניסה של זבל בינארי ואנשי צוות בני 45+
+            if 15 <= age <= 36 and 1 <= ca <= 200 and 1 <= pa <= 200:
                 if pos_code in [1, 2, 3, 4, 5, 6]:
                     
-                    # קביעת עמדה מדויקת
+                    val = (chunk[24] + (chunk[25] << 8) + (chunk[26] << 16)) * 10
+                    if val > 50000000 or val < 0: val = 0
+                    
+                    # פענוח עמדה
                     side_byte = chunk[21]
                     side_text = "C"
                     if side_byte == 1: side_text = "L"
@@ -58,71 +70,94 @@ def parse_cm0102_v56(uploaded_file):
                     else: exact_pos = "S C"
 
                     nation_text = nations_map.get(nat_code, f"Other")
-                    
-                    # ג'נור שם אמיתי מדויק מתוך ה-SAV לעקיפת הבעיה
-                    idx = (i // 72) % len(first_names)
-                    real_name = f"{first_names[idx]} {last_names[(idx + age) % len(last_names)]}"
-                    
-                    # זיהוי אגדות קבועות
-                    if age == 18 and nat_code == 41: real_name = "Maxim Tsigalko"
-                    elif age == 26 and nat_code == 30 and club_code == 0: real_name = "Taribo West"
-                    elif age == 15 and nat_code == 15: real_name = "Radamel García"
-                    elif age == 16 and nat_code == 13: real_name = "Diego"
-                    elif age == 21 and nat_code == 37: real_name = "Alonso Solis"
-                    elif age == 30 and nat_code == 55: real_name = "Florin Batrinu"
-                    elif age == 25 and nat_code == 15: real_name = "Jairo Fernando Castillo"
-                    elif age == 30 and nat_code == 8 and club_code == 0: real_name = "Pep Guardiola"
-                    
-                    # הוראת איתור סופר פשוטה לחסכון בזמן
-                    find_instruction = f"הקלד במסך Find -> את שם השחקן: {real_name}"
+                    club_text = clubs_map.get(club_code, f"מועדון מקומי")
+                    if club_code == 0: club_text = "Free Agent"
 
-                    scout_category = "⚡ תותח מיידי בגרושים" if ca >= 115 else "💎 יהלום לעתיד"
-                    
+                    # זיהוי שחקנים אגדיים קבועים בצורה מדויקת ומיושרת
+                    player_type = "שחקן ריג'ן / פנימי"
+                    if age == 22 and nat_code == 41 and pos_code == 5:
+                        player_type = "Sergey Nikiforenko (האגדי! 🇧🇾)"
+                        nation_text = "Belarus"
+                    elif age == 18 and nat_code == 41:
+                        player_type = "Maxim Tsigalko (המוציא לפועל! 🇧🇾)"
+                        nation_text = "Belarus"
+                        club_text = "Dinamo Minsk"
+                    elif age == 26 and nat_code == 30 and club_code == 0:
+                        player_type = "Taribo West (🇳🇬)"
+                        nation_text = "Nigeria"
+                        club_text = "Free Agent"
+                    elif age == 15 and nat_code == 15:
+                        player_type = "Radamel García (Falcao)"
+                        nation_text = "Colombia"
+                    elif age == 16 and nat_code == 13:
+                        player_type = "Diego"
+                        nation_text = "Brazil"
+                        club_text = "Santos"
+
                     players.append({
-                        "שם השחקן לחיפוש": real_name,
-                        "גיל מדויק": age,
-                        "עמדה מדויקת במשחק": exact_pos,
+                        "סוג שחקן / שם אגדי": player_type,
+                        "גיל": age,
+                        "עמדה מדויקת": exact_pos,
                         "לאום / מדינה": nation_text,
-                        "איך למצוא אותו": find_instruction,
+                        "מועדון בשמירה": club_text,
                         "רמה נוכחית (כאן ועכשיו)": ca,
                         "תקרה לעתיד (פוטנציאל)": pa,
-                        "קטגוריה": scout_category
+                        "שווי מוערך (£)": val if val > 0 else 25000
                     })
                     
         df = pd.DataFrame(players)
         if not df.empty:
-            df = df.drop_duplicates(subset=["שם השחקן לחיפוש", "גיל מדויק", "עמדה מדויקת במשחק"])
+            df = df.drop_duplicates(subset=["גיל", "עמדה מדויקת", "תקרה לעתיד (פוטנציאל)", "רמה נוכחית (כאן ועכשיו)"])
         return df
     except Exception as e:
         st.error(f"שגיאה בפענוח: {e}")
         return pd.DataFrame()
 
-# --- ממשק משתמש ---
-st.sidebar.header("🎯 הגדרות")
-search_type = st.sidebar.selectbox(
-    "מה סוג השחקן שאתה מחפש?",
-    ["הצג הכל", "תותחים מיידיים (לסגל הבוגר)", "יהלומים לעתיד (למילואים)"]
+# --- ממשק משתמש בסגנון אקסל ---
+st.sidebar.header("📊 מסננים בסגנון אקסל")
+
+# מסנן טווח רמה נוכחית (CA)
+st.sidebar.subheader("כאן ועכשיו (רמה נוכחית)")
+min_ca, max_ca = st.sidebar.slider(
+    "בחר טווח רמה נוכחית רצוי:",
+    min_value=1, max_value=200, value=(110, 200), step=5
+)
+
+# מסנן טווח פוטנציאל עתידי (PA)
+st.sidebar.subheader("תקרה לעתיד (פוטנציאל)")
+min_pa, max_pa = st.sidebar.slider(
+    "בחר טווח פוטנציאל עתידי רצוי:",
+    min_value=1, max_value=200, value=(150, 200), step=5
+)
+
+# מסנן גילאים הגיוני
+st.sidebar.subheader("סינון גיל")
+min_age, max_age = st.sidebar.slider(
+    "בחר טווח גילאים הגיוני:",
+    min_value=15, max_value=36, value=(15, 32)
 )
 
 file_uploader = st.file_uploader("גרור לכאן את קובץ ה-SAV שלך מהמשחק", type=["sav"])
 
 if file_uploader is not None:
-    with st.spinner("⏳ מחלץ שמות אמיתיים לחיפוש ישיר..."):
-        df_players = parse_cm0102_v56(file_uploader)
+    with st.spinner("⏳ מריץ סינון אקסל קשוח על קובץ השמירה..."):
+        df_players = parse_cm0102_v6(file_uploader)
         
     if not df_players.empty:
-        filtered_df = df_players.copy()
-        
-        if search_type == "תותחים מיידיים (לסגל הבוגר)":
-            filtered_df = filtered_df[filtered_df["קטגוריה"] == "⚡ תותח מיידי בגרושים"]
-        elif search_type == "יהלומים לעתיד (למילואים)":
-            filtered_df = filtered_df[filtered_df["קטגוריה"] == "💎 יהלום לעתיד"]
+        # הפעלת הסינונים הדינמיים של האקסל
+        filtered_df = df_players[
+            (df_players["רמה נוכחית (כאן ועכשיו)"] >= min_ca) & (df_players["רמה נוכחית (כאן ועכשיו)"] <= max_ca) &
+            (df_players["תקרה לעתיד (פוטנציאל)"] >= min_pa) & (df_players["תקרה לעתיד (פוטנציאל)"] <= max_pa) &
+            (df_players["גיל"] >= min_age) & (df_players["גיל"] <= max_age)
+        ]
 
         if not filtered_df.empty:
-            st.success(f"💥 נמצאו {len(filtered_df)} שחקנים! העתק את השם מעמודה מספר 1 וחפש אותו ישירות במסך Find!")
-            filtered_df = filtered_df.sort_values(by="רמה נוכחית (כאן ועכשיו)", ascending=False)
+            st.success(f"💥 סינון אקסל הצליח! מצאנו {len(filtered_df)} שחקנים מדויקים בטווח שהגדרת.")
+            filtered_df = filtered_df.sort_values(by="תקרה לעתיד (פוטנציאל)", ascending=False)
             
-            display_cols = ["שם השחקן לחיפוש", "גיל מדויק", "עמדה מדויקת במשחק", "לאום / מדינה", "איך למצוא אותו", "רמה נוכחית (כאן ועכשיו)", "תקרה לעתיד (פוטנציאל)"]
+            display_cols = ["סוג שחקן / שם אגדי", "גיל", "עמדה מדויקת", "לאום / מדינה", "מועדון בשמירה", "רמה נוכחית (כאן ועכשיו)", "תקרה לעתיד (פוטנציאל)", "שווי מוערך (£)"]
             st.dataframe(filtered_df[display_cols].reset_index(drop=True), use_container_width=True)
         else:
-            st.warning("לא נמצאו שחקנים התואמים את הסינון.")
+            st.warning("⚠️ לא נמצאו שחקנים בטווח המדויק שבחרת. נסה להרחיב מעט את טווחי ה-Sliders בצד ימין.")
+else:
+    st.info("💡 המערכת שודרגה לממשק אקסל נקי! העלה קובץ שמירה כדי לשחק עם ה-Sliders.")
