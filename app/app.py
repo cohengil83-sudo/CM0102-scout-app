@@ -60,11 +60,14 @@ def parse_cm0102_v6(uploaded_file):
                     elif side_byte == 4: side_text = "L/C"
                     
                     if pos_code == 1: exact_pos = "GK"
-                    elif pos_code == 2: exact_pos = f"D {side_text}"
-                    elif pos_code == 3: exact_pos = f"M {side_text}"
-                    elif pos_code == 4: exact_pos = f"F {side_text}"
-                    elif pos_code == 5: exact_pos = f"AM {side_text}"
-                    else: exact_pos = "S C"
+                    # עיצוב השווי לטקסט קריא כדי שיהיה קל להשוות במשחק
+                    formatted_val = f"£{val:,.0f}" if val > 0 else "חינם (£0)"
+                    
+                    # יצירת הוראות חיפוש חכמות שכוללות את תג המחיר כטביעת אצבע!
+                    if club_text == "Free Agent":
+                        search_guide = f"חיפוש ➔ לאום: {nation_text} | {exact_pos} | גיל: {age} | סנן חוזה: Expired | 🎯 שווי מדויק: {formatted_val}"
+                    else:
+                        search_guide = f"גש ל-{club_text} ➔ חפש שחקן {exact_pos} בן {age} מ-{nation_text} | 🎯 שווי מדויק: {formatted_val}"
 
                     nation_text = nations_map.get(nat_code, "Other")
                     club_text = clubs_map.get(club_code, "מועדון מקומי")
